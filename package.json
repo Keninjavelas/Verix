@@ -1,0 +1,23 @@
+{
+  "name": "verix",
+  "version": "0.1.0",
+  "description": "Quantum-resilient trust infrastructure for autonomous AI systems",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/cli.js serve",
+    "verify": "node src/cli.js verify",
+    "test": "node --test",
+    "seed": "node src/cli.js demo"
+  },
+  "dependencies": {
+    "mldsa-wasm": "0.0.4",
+    "mlkem": "2.7.0",
+    "ws": "8.22.2",
+    "pqc": "1.0.13"
+  }
+}

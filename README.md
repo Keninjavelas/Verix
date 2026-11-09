@@ -359,6 +359,37 @@ Verix provides the cryptographic accountability, explainability, and operational
 
 🚧 Early prototype / research stage
 
+## Runs today, with no cloud account
+
+Requires Node.js >= 22. `npm install && npm start` serves the API and the UI on
+`http://127.0.0.1:4317`, storing each node's ledger under `.verix-data/`.
+
+- **Crypto core** — SHA-3 hashing, ML-DSA signatures, ML-KEM encapsulation, agent
+  identity issuance with self-binding, and revocation gated by an authority check.
+- **Proof ledger** — append-only Merkle chain per node, inclusion proofs by sequence,
+  chain audit, and record-hash divergence detection across nodes.
+- **Replication** — quorum attestation over a configurable node plan, signed
+  node-to-node certify/accept gossip, an event bus with replay, and remote HTTP
+  event forwarding between peers.
+- **Verification API** — `POST /verify-action` alongside ledger, identity,
+  revocation, event, copilot and trust-aggregation routes; a WebSocket feed at
+  `/ws`; the UI served statically from `public/` with no build step and no CDN.
+- **Trust scoring** — weighted components, per-check caps, behavioural anomaly
+  detectors, and an enforcement floor that downgrades to read-only.
+- **Trust Copilot** — a BM25 plus hash-embedding retrieval index over ledger records,
+  intent-routed answers built from the stored evidence, and inline proof citations.
+  An OpenAI-compatible model is optional and only ever appended to the deterministic
+  answer; with no key configured the copilot stays fully offline.
+- **Tests** — `npm test`.
+
+## Needs credentials we do not ship
+
+- **AWS DynamoDB / Google Cloud Firestore / Google Cloud Pub/Sub** — the adapters are
+  written and load their SDKs lazily; the optional packages are not installed here, so
+  those paths are unverified against live clouds.
+- **Azure Table storage** — planned. There is no adapter, and selecting that backend
+  raises a configuration error rather than silently falling back to local storage.
+
 ---
 
 # License

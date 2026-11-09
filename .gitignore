@@ -1,0 +1,17 @@
+node_modules/
+
+# runtime ledger and keys written by the file backend
+.verix-data/
+*.key.json
+coordinator-key.json
+
+.env
+.env.*
+!.env.example
+
+*.log
+.tmp-*
+.probe*
+*-probe.mjs
+*.out.txt
+*.err.txt
