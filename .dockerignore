@@ -1,0 +1,28 @@
+# Version control & CI metadata
+.git
+.gitignore
+.github
+
+# Dependencies (installed deterministically via npm ci inside builder stage)
+node_modules
+npm-debug.log*
+
+# Sensitive runtime ledgers, PQC keys, and environment secrets (Zero-Trust boundary)
+.verix-data/
+*.key.json
+coordinator-key.json
+.env
+.env.*
+
+# Test suite, docs, and local scratch files (excluded from production artifact)
+test/
+README.md
+LICENSE
+Dockerfile
+.dockerignore
+*.log
+.tmp-*
+.probe*
+*-probe.mjs
+*.out.txt
+*.err.txt

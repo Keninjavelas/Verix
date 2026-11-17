@@ -1,0 +1,88 @@
+name: Verix Visual Intelligence UI — Edge CDN Deployment Pipeline
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "public/**"
+      - "infra/terraform/frontend_infra.tf"
+      - ".github/workflows/ui_cd.yml"
+  workflow_dispatch:
+
+# Zero-Trust OIDC permissions (no static AWS access keys)
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: us-east-1
+  UI_ORIGIN_BUCKET: verix-visual-intelligence-ui-origin
+
+jobs:
+  build-verify-and-deploy-ui:
+    name: Build, Compute SRI Hashes & Deploy UI to CloudFront Edge
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies & verify UI asset integrity
+        run: |
+          npm ci --ignore-scripts
+          node --check public/app.js
+          mkdir -p dist-ui
+          cp -r public/* dist-ui/
+
+      - name: Generate SHA-384 Subresource Integrity (SRI) Manifest
+        run: |
+          node --input-type=module -e '
+            import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+            import { createHash } from "node:crypto";
+            import { join } from "node:path";
+            const files = readdirSync("dist-ui");
+            const manifest = {};
+            for (const file of files) {
+              const bytes = readFileSync(join("dist-ui", file));
+              manifest[file] = "sha384-" + createHash("sha384").update(bytes).digest("base64");
+            }
+            writeFileSync("dist-ui/sri-manifest.json", JSON.stringify(manifest, null, 2));
+          '
+
+      - name: Authenticate to AWS via Phase 2 OIDC Role (No Static Keys)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_OIDC_ROLE_ARN }}
+          role-session-name: verix-ui-cd-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Sync Immutable UI Assets to Private S3 Origin (AES256 SSE)
+        run: |
+          aws s3 sync dist-ui/ "s3://${{ env.UI_ORIGIN_BUCKET }}/" \
+            --delete \
+            --sse AES256 \
+            --cache-control "public, max-age=31536000, immutable" \
+            --exclude "index.html" \
+            --exclude "sri-manifest.json"
+
+          aws s3 cp dist-ui/index.html "s3://${{ env.UI_ORIGIN_BUCKET }}/index.html" \
+            --sse AES256 \
+            --cache-control "no-cache, no-store, must-revalidate" \
+            --content-type "text/html; charset=utf-8"
+
+          aws s3 cp dist-ui/sri-manifest.json "s3://${{ env.UI_ORIGIN_BUCKET }}/sri-manifest.json" \
+            --sse AES256 \
+            --cache-control "no-cache" \
+            --content-type "application/json"
+
+      - name: Invalidate CloudFront Edge Cache
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}" \
+            --paths "/index.html" "/sri-manifest.json"

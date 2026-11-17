@@ -1,0 +1,130 @@
+name: Verix Zero-Trust Multi-Cloud CD Pipeline (AWS Fargate & GCP Cloud Run)
+
+on:
+  workflow_run:
+    workflows: ["Verix Zero-Trust DevSecOps CI & Supply Chain Pipeline"]
+    types: [completed]
+    branches: [main]
+
+# Strict least-privilege permissions for OIDC token exchange & provenance verification
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  AWS_REGION: us-east-1
+  GCP_REGION: us-central1
+
+jobs:
+  # ============================================================================
+  # Gate 1: SLSA Provenance, Cosign Signature & SBOM Attestation Verification
+  # ============================================================================
+  verify-artifact:
+    name: Verify Cosign Signature & CycloneDX SBOM Attestation
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' }}
+    runs-on: ubuntu-latest
+    outputs:
+      verified_image: ${{ steps.verify.outputs.verified_image }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Sigstore Cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Log in to GitHub Container Registry (GHCR)
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve Immutable @sha256 Digest & Verify Sigstore Attestations
+        id: verify
+        run: |
+          COMMIT_SHA="${{ github.event.workflow_run.head_sha }}"
+          DIGEST=$(docker buildx imagetools inspect "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${COMMIT_SHA}" --format '{{json .Manifest.Digest}}' | tr -d '"')
+          VERIFIED_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${DIGEST}"
+
+          echo "[INFO] Verifying Cosign keyless signature for ${VERIFIED_IMAGE}..."
+          cosign verify "${VERIFIED_IMAGE}" \
+            --certificate-identity-regexp="https://github.com/${{ github.repository }}/.github/workflows/ci.yml@refs/heads/main" \
+            --certificate-oidc-issuer="https://token.actions.githubusercontent.com"
+
+          echo "[INFO] Verifying CycloneDX SBOM attestation for ${VERIFIED_IMAGE}..."
+          cosign verify-attestation "${VERIFIED_IMAGE}" \
+            --type cyclonedx \
+            --certificate-identity-regexp="https://github.com/${{ github.repository }}/.github/workflows/ci.yml@refs/heads/main" \
+            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" > /dev/null
+
+          echo "verified_image=${VERIFIED_IMAGE}" >> "$GITHUB_OUTPUT"
+
+  # ============================================================================
+  # Gate 2: Credential-Less Multi-Cloud Rollout (AWS ECS Fargate & GCP Cloud Run)
+  # ============================================================================
+  deploy-multi-cloud:
+    name: Multi-Cloud Rollout (AWS ECS Fargate & GCP Cloud Run)
+    needs: verify-artifact
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Authenticate to AWS via Phase 2 OIDC Role (No Static Credentials)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_OIDC_ROLE_ARN }}
+          role-session-name: verix-cd-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Authenticate to GCP via Phase 2 Workload Identity Federation (No JSON Keys)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_TERRAFORM_SERVICE_ACCOUNT }}
+
+      - name: Set up Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+
+      - name: Terraform Init & Apply Digest-Pinned Compute State
+        working-directory: infra/terraform
+        run: |
+          terraform init -input=false
+          terraform validate
+          terraform apply -input=false -auto-approve \
+            -var="gcp_project_id=${{ vars.GCP_PROJECT_ID }}" \
+            -var="vpc_id=${{ vars.AWS_VPC_ID }}" \
+            -var='private_subnet_ids=${{ vars.AWS_PRIVATE_SUBNET_IDS }}' \
+            -var="container_image_digest=${{ needs.verify-artifact.outputs.verified_image }}"
+
+      - name: Force Zero-Downtime Rolling Deployment on AWS ECS Fargate (verix-cluster-aws)
+        run: |
+          aws ecs update-service \
+            --cluster verix-cluster-aws \
+            --service verix-node-aws \
+            --force-new-deployment \
+            --region "${{ env.AWS_REGION }}"
+
+          aws ecs wait services-stable \
+            --cluster verix-cluster-aws \
+            --services verix-node-aws \
+            --region "${{ env.AWS_REGION }}"
+
+      - name: Force Digest-Pinned Revision Rollout on GCP Cloud Run (verix-node-gcp)
+        run: |
+          gcloud run services update verix-node-gcp \
+            --project="${{ vars.GCP_PROJECT_ID }}" \
+            --region="${{ env.GCP_REGION }}" \
+            --image="${{ needs.verify-artifact.outputs.verified_image }}" \
+            --service-account="verix-gcp-node-runtime@${{ vars.GCP_PROJECT_ID }}.iam.gserviceaccount.com" \
+            --ingress=internal \
+            --execution-environment=gen2 \
+            --quiet

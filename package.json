@@ -11,6 +11,8 @@
   "scripts": {
     "start": "node src/cli.js serve",
     "verify": "node src/cli.js verify",
+    "selftest": "node src/cli.js selftest",
+    "lint": "node --input-type=module -e \"import { readdirSync, statSync } from 'node:fs'; import { join } from 'node:path'; import { execFileSync } from 'node:child_process'; const walk = (d) => readdirSync(d).flatMap((f) => { const p = join(d, f); return statSync(p).isDirectory() ? walk(p) : p.endsWith('.js') ? [p] : []; }); for (const f of [...walk('src'), ...walk('test')]) execFileSync(process.execPath, ['--check', f], { stdio: 'inherit' });\"",
     "test": "node --test",
     "seed": "node src/cli.js demo"
   },
