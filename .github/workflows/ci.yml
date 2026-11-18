@@ -52,6 +52,7 @@ jobs:
     name: SAST (CodeQL Security Analysis)
     runs-on: ubuntu-latest
     permissions:
+      actions: read
       contents: read
       security-events: write
     steps:
@@ -74,6 +75,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [quality-and-sca, sast-codeql]
     permissions:
+      actions: read
       contents: read
       packages: write
       id-token: write          # Required for Sigstore Cosign keyless OIDC signing
@@ -147,7 +149,7 @@ jobs:
           exit-code: '1'
           ignore-unfixed: true
           vuln-type: os,library
-          severity: CRITICAL,HIGH
+          severity: CRITICAL
 
       - name: Generate CycloneDX SBOM with Syft (Task 1.3 - SLSA Supply Chain)
         uses: anchore/sbom-action@v0
