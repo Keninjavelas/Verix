@@ -13,7 +13,6 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
   AWS_REGION: us-east-1
   GCP_REGION: us-central1
 
@@ -44,9 +43,10 @@ jobs:
       - name: Resolve Immutable @sha256 Digest & Verify Sigstore Attestations
         id: verify
         run: |
+          IMAGE_LC=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           COMMIT_SHA="${{ github.event.workflow_run.head_sha }}"
-          DIGEST=$(docker buildx imagetools inspect "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${COMMIT_SHA}" --format '{{json .Manifest.Digest}}' | tr -d '"')
-          VERIFIED_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${DIGEST}"
+          DIGEST=$(docker buildx imagetools inspect "${{ env.REGISTRY }}/${IMAGE_LC}:${COMMIT_SHA}" --format '{{json .Manifest.Digest}}' | tr -d '"')
+          VERIFIED_IMAGE="${{ env.REGISTRY }}/${IMAGE_LC}@${DIGEST}"
 
           echo "[INFO] Verifying Cosign keyless signature for ${VERIFIED_IMAGE}..."
           cosign verify "${VERIFIED_IMAGE}" \
@@ -67,6 +67,7 @@ jobs:
   deploy-multi-cloud:
     name: Multi-Cloud Rollout (AWS ECS Fargate & GCP Cloud Run)
     needs: verify-artifact
+    if: ${{ vars.AWS_OIDC_ROLE_ARN != '' && vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' }}
     runs-on: ubuntu-latest
     environment: production
     steps:

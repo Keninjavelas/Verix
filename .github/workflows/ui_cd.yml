@@ -22,7 +22,6 @@ jobs:
   build-verify-and-deploy-ui:
     name: Build, Compute SRI Hashes & Deploy UI to CloudFront Edge
     runs-on: ubuntu-latest
-    environment: production
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -43,19 +42,32 @@ jobs:
       - name: Generate SHA-384 Subresource Integrity (SRI) Manifest
         run: |
           node --input-type=module -e '
-            import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+            import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
             import { createHash } from "node:crypto";
-            import { join } from "node:path";
-            const files = readdirSync("dist-ui");
+            import { join, relative } from "node:path";
+            const walk = (dir) =>
+              readdirSync(dir).flatMap((entry) => {
+                const full = join(dir, entry);
+                return statSync(full).isDirectory() ? walk(full) : [full];
+              });
             const manifest = {};
-            for (const file of files) {
-              const bytes = readFileSync(join("dist-ui", file));
-              manifest[file] = "sha384-" + createHash("sha384").update(bytes).digest("base64");
+            for (const fullPath of walk("dist-ui")) {
+              const relPath = relative("dist-ui", fullPath).replace(/\\/g, "/");
+              if (relPath === "sri-manifest.json") continue;
+              const bytes = readFileSync(fullPath);
+              manifest[relPath] = "sha384-" + createHash("sha384").update(bytes).digest("base64");
             }
             writeFileSync("dist-ui/sri-manifest.json", JSON.stringify(manifest, null, 2));
           '
 
+      - name: Upload Verified UI & SRI Bundle Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: verix-ui-edge-bundle
+          path: dist-ui/
+
       - name: Authenticate to AWS via Phase 2 OIDC Role (No Static Keys)
+        if: ${{ vars.AWS_OIDC_ROLE_ARN != '' }}
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.AWS_OIDC_ROLE_ARN }}
@@ -63,6 +75,7 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Sync Immutable UI Assets to Private S3 Origin (AES256 SSE)
+        if: ${{ vars.AWS_OIDC_ROLE_ARN != '' }}
         run: |
           aws s3 sync dist-ui/ "s3://${{ env.UI_ORIGIN_BUCKET }}/" \
             --delete \
@@ -82,6 +95,7 @@ jobs:
             --content-type "application/json"
 
       - name: Invalidate CloudFront Edge Cache
+        if: ${{ vars.AWS_OIDC_ROLE_ARN != '' && vars.CLOUDFRONT_DISTRIBUTION_ID != '' }}
         run: |
           aws cloudfront create-invalidation \
             --distribution-id "${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}" \

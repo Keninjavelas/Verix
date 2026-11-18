@@ -12,7 +12,6 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   # ============================================================================
@@ -83,6 +82,12 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Normalize lowercase GHCR image name
+        id: meta
+        run: |
+          IMAGE_LC=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "image_name=${IMAGE_LC}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -168,8 +173,8 @@ jobs:
           context: .
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.image_name }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.image_name }}:latest
           cache-from: type=gha
 
       - name: Install Sigstore Cosign
@@ -181,6 +186,6 @@ jobs:
         env:
           COSIGN_EXPERIMENTAL: '1'
         run: |
-          IMAGE_DIGEST="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.push_image.outputs.digest }}"
+          IMAGE_DIGEST="${{ env.REGISTRY }}/${{ steps.meta.outputs.image_name }}@${{ steps.push_image.outputs.digest }}"
           cosign sign --yes "${IMAGE_DIGEST}"
           cosign attest --yes --predicate verix-sbom.cdx.json --type cyclonedx "${IMAGE_DIGEST}"
