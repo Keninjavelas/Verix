@@ -142,22 +142,32 @@ jobs:
           docker rm -f verix-smoke
 
       - name: Gate 5 — Container Vulnerability Scan (Trivy)
-        uses: aquasecurity/trivy-action@0.28.0
-        with:
-          image-ref: verix-api:${{ github.sha }}
-          format: table
-          exit-code: '1'
-          ignore-unfixed: true
-          vuln-type: os,library
-          severity: CRITICAL
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            ghcr.io/aquasecurity/trivy:latest image \
+            --format table \
+            --exit-code 1 \
+            --ignore-unfixed \
+            --scanners vuln \
+            --pkg-types os,library \
+            --severity CRITICAL \
+            verix-api:${{ github.sha }}
 
       - name: Generate CycloneDX SBOM with Syft (Task 1.3 - SLSA Supply Chain)
-        uses: anchore/sbom-action@v0
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            ghcr.io/anchore/syft:latest \
+            verix-api:${{ github.sha }} \
+            -o cyclonedx-json > verix-sbom.cdx.json
+          test -s verix-sbom.cdx.json
+
+      - name: Upload CycloneDX SBOM Artifact
+        uses: actions/upload-artifact@v4
         with:
-          image: verix-api:${{ github.sha }}
-          format: cyclonedx-json
-          output-file: verix-sbom.cdx.json
-          upload-artifact: true
+          name: verix-sbom-cyclonedx
+          path: verix-sbom.cdx.json
 
       - name: Log in to GitHub Container Registry (GHCR)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
