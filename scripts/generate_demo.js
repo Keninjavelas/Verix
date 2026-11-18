@@ -2,11 +2,12 @@
 // Verix Automated Product Demonstration Generator (`scripts/generate_demo.js`)
 // ==============================================================================
 // Boots an isolated multi-node Verix fleet (`verix-node-aws-1`, `verix-node-gcp-1`,
-// `verix-node-edge-1`), launches headless Chromium/Playwright against the live
-// Visual Trust Intelligence UI, simulates autonomous AI Agent PQC transactions
-// (`POST /verify-action`) with real-time WebSocket (`/ws`) graph updates, queries
-// the AI Trust Copilot, and encodes a high-definition H.264 `demo.mp4` artifact
-// into `assets/demo.mp4` and `public/demo.mp4`.
+// `verix-node-edge-1`), launches headless Chromium against the live Visual Trust
+// Intelligence UI, simulates autonomous AI Agent PQC transactions (`POST /verify-action`)
+// with real-time WebSocket (`/ws`) graph updates, queries the AI Trust Copilot,
+// opens the Cryptographic Proof Dossier, and encodes both:
+//   - `assets/demo.gif` & `public/demo.gif` (inline autoplay in GitHub README.md)
+//   - `assets/demo.mp4` & `public/demo.mp4` (1080p H.264 MP4 video)
 // ==============================================================================
 
 import { spawn, execFileSync } from 'node:child_process';
@@ -139,7 +140,7 @@ export async function generateDemo() {
   await mkdir(framesDir, { recursive: true });
   await mkdir(profileDir, { recursive: true });
 
-  console.log('[1/5] Starting ephemeral Verix multi-cloud fleet in memory...');
+  console.log('[1/6] Starting ephemeral Verix multi-cloud fleet in memory...');
   const config = loadConfig(process.env, {
     VERIX_BACKEND: 'memory',
     VERIX_PORT: 4399,
@@ -149,8 +150,8 @@ export async function generateDemo() {
   const { agents, fp } = await seedInitialFleet(running.platform);
 
   const browserBin = findBrowserExecutable();
-  const debugPort = 9344;
-  console.log(`[2/5] Launching headless Chromium (${browserBin})...`);
+  const debugPort = 9345;
+  console.log(`[2/6] Launching headless Chromium (${browserBin})...`);
   const chrome = spawn(
     browserBin,
     [
@@ -202,10 +203,10 @@ export async function generateDemo() {
     });
 
     await sleep(1500);
-    console.log('[3/5] Capturing initial Visual Trust Topology & Multi-Cloud Fleet state...');
+    console.log('[3/6] Scene 1: Capturing initial Trust Topology & Multi-Cloud Witness Fleet...');
     await captureHold(cdp, 18);
 
-    console.log('[4/5] Simulating live AI Agent PQC transactions & WebSocket topology updates...');
+    console.log('[4/6] Scene 2 & 3: Live AI Agent PQC transactions & Rogue Agent Rejection over WebSocket...');
     const agent7 = agents.get('Agent-7');
     await running.platform.service.verifyAction({
       identity: agent7.identity,
@@ -215,7 +216,7 @@ export async function generateDemo() {
       executionFingerprint: fp,
       context: { costUsd: 24, changeTicket: 'CHG-4092' },
     });
-    await sleep(800);
+    await sleep(900);
     await captureHold(cdp, 18);
 
     // Simulate unauthorized rogue agent action rejected by policy & quorum
@@ -229,36 +230,62 @@ export async function generateDemo() {
       context: { destructive: true },
     });
     await running.platform.reindex();
+    await sleep(1000);
+    await captureHold(cdp, 22);
+
+    console.log('[5/6] Scene 4, 5 & 6: AI Trust Copilot RAG Query, Timeline & Cryptographic Proof Dossier...');
+    // Open Copilot tab and submit live forensic query
+    await cdp.send('Runtime.evaluate', {
+      expression: `
+        document.getElementById('paneTabCopilot')?.click();
+        const input = document.getElementById('chatInput');
+        const form = document.getElementById('chatForm');
+        if (input && form) {
+          input.value = 'Why was the deployment flagged for Agent-Rogue?';
+          form.requestSubmit();
+        }
+      `,
+    });
+    await sleep(1200);
+    await captureHold(cdp, 24);
+
+    // Switch to Execution Timeline view while keeping Copilot open
+    await cdp.send('Runtime.evaluate', {
+      expression: `document.getElementById('tabTimeline')?.click();`,
+    });
     await sleep(900);
     await captureHold(cdp, 20);
 
-    // Scroll to / interact with Copilot & Dossier views in the UI
+    // Switch to Ledger Records view and open the top rejected proof in the Cryptographic Dossier
     await cdp.send('Runtime.evaluate', {
       expression: `
-        const askInput = document.querySelector('input[type="text"], textarea, [data-copilot-input]');
-        if (askInput) {
-          askInput.value = 'Why was Agent-Rogue flagged and rejected?';
-          askInput.dispatchEvent(new Event('input', { bubbles: true }));
-        }
-        window.scrollTo({ top: 380, behavior: 'smooth' });
+        document.getElementById('tabRecords')?.click();
+        document.getElementById('paneTabDossier')?.click();
+        setTimeout(() => {
+          document.querySelector('#recordsBody tbody tr')?.click();
+        }, 150);
       `,
     });
-    await sleep(800);
-    await captureHold(cdp, 20);
+    await sleep(1100);
+    await captureHold(cdp, 26);
 
+    // Return to Topology view with the proof Dossier open on the right rail
     await cdp.send('Runtime.evaluate', {
-      expression: `window.scrollTo({ top: 0, behavior: 'smooth' });`,
+      expression: `document.getElementById('tabTopology')?.click();`,
     });
-    await sleep(600);
-    await captureHold(cdp, 14);
+    await sleep(900);
+    await captureHold(cdp, 22);
 
     cdp.close();
 
-    console.log('[5/5] Encoding H.264 MP4 product demonstration (`assets/demo.mp4` & `public/demo.mp4`)...');
+    console.log('[6/6] Encoding 1080p MP4 (`demo.mp4`) and inline-autoplay GIF (`demo.gif`)...');
     const assetsDir = resolve('assets');
     await mkdir(assetsDir, { recursive: true });
     const outputMp4 = join(assetsDir, 'demo.mp4');
     const publicMp4 = resolve('public', 'demo.mp4');
+    const outputGif = join(assetsDir, 'demo.gif');
+    const publicGif = resolve('public', 'demo.gif');
+    const palettePath = join(workDir, 'palette.png');
 
     execFileSync(
       'ffmpeg',
@@ -279,8 +306,42 @@ export async function generateDemo() {
       { stdio: 'ignore' },
     );
 
+    // Two-pass high-DPI Lanczos palette generation for crisp dark-mode UI text in GitHub README
+    execFileSync(
+      'ffmpeg',
+      [
+        '-y',
+        '-framerate',
+        '15',
+        '-i',
+        join(framesDir, 'frame-%04d.png'),
+        '-vf',
+        'fps=10,scale=1280:-1:flags=lanczos,palettegen=stats_mode=diff',
+        palettePath,
+      ],
+      { stdio: 'ignore' },
+    );
+
+    execFileSync(
+      'ffmpeg',
+      [
+        '-y',
+        '-framerate',
+        '15',
+        '-i',
+        join(framesDir, 'frame-%04d.png'),
+        '-i',
+        palettePath,
+        '-lavfi',
+        'fps=10,scale=1280:-1:flags=lanczos[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle',
+        outputGif,
+      ],
+      { stdio: 'ignore' },
+    );
+
     await copyFile(outputMp4, publicMp4);
-    console.log(`[SUCCESS] Generated ${outputMp4} and ${publicMp4} (${frameIndex} frames @ 1920x1080).`);
+    await copyFile(outputGif, publicGif);
+    console.log(`[SUCCESS] Generated ${outputMp4} and ${outputGif} (${frameIndex} frames).`);
   } finally {
     chrome.kill();
     await running.close();

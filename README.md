@@ -37,14 +37,14 @@ Verix eliminates these failure modes by combining **NIST-standardized Post-Quant
 
 # Live Product Demonstration
 
-> **Visual Proof of Execution:** Automated end-to-end capture generated via [`scripts/generate_demo.js`](./scripts/generate_demo.js) showing live `ML-DSA-65` action verification (`POST /verify-action`), multi-cloud Merkle quorum consensus across AWS and GCP nodes, real-time WebSocket (`/ws`) Trust Topology graph updates, rogue agent policy rejection, and AI Trust Copilot forensic investigation.
+> **Visual Proof of Execution:** Automated end-to-end capture generated via [`scripts/generate_demo.js`](./scripts/generate_demo.js) showing live `ML-DSA-65` action verification (`POST /verify-action`), multi-cloud Merkle quorum consensus across AWS and GCP nodes, real-time WebSocket (`/ws`) Trust Topology graph updates, rogue agent policy rejection, AI Trust Copilot forensic investigation, and the Cryptographic Proof Dossier.
 
 <div align="center">
-  <video src="assets/demo.mp4" controls autoplay loop muted playsinline width="100%">
-    <a href="assets/demo.mp4">Watch the Verix Live Product Demonstration (assets/demo.mp4)</a>
-  </video>
+  <a href="./assets/demo.mp4">
+    <img src="./assets/demo.gif" alt="Verix Live Product Demonstration — Multi-Cloud PQC Trust Topology, AI Trust Copilot & Cryptographic Proof Dossier" width="100%" />
+  </a>
   <p>
-    <a href="./assets/demo.mp4"><strong>▶ Watch High-Definition Demo Video (assets/demo.mp4)</strong></a>
+    <a href="./assets/demo.mp4"><strong>▶ Download / Watch Full 1080p MP4 Video (assets/demo.mp4)</strong></a>
     &nbsp;|&nbsp;
     <a href="./public/demo.mp4"><strong>Mirror (public/demo.mp4)</strong></a>
   </p>
